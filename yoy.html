@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Year-over-Year Financial Analysis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+    <div class="floating-elements">
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+    </div>
+    
+    <a href="index.html" class="back-button">← Back to Suite</a>
+    
+    <div class="container">
+        <h1>Year-over-Year Financial Analysis Tool</h1>
+        <form id="compare-form">
+            <label>
+                Stock Symbol
+                <input type="text" id="stock" required placeholder="e.g. AAPL">
+            </label>
+            <button type="submit">Analyze YoY</button>
+            <button type="submit">Refresh Data</button>
+        </form>
+        <div id="error" class="error"></div>
+        
+        <!-- Company Profile Section -->
+        <div id="company-profile-box" class="profile-collapsed">
+            <div class="profile-header" tabindex="0">
+                <span>Company Profile</span>
+                <span id="profile-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="profile-content" style="display:none;">
+                <div class="profile-columns">
+                    <div class="profile-col" id="profile"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Income Statement Section -->
+        <div id="metrics-box" class="metrics-collapsed">
+            <div class="metrics-header" tabindex="0">
+                <span>Income Statement YoY Comparison</span>
+                <span id="metrics-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="metrics-content" id="metrics-content" style="display:none;">
+                <div id="results"></div>
+            </div>
+        </div>
+        
+        <!-- Balance Sheet Section -->
+        <div id="balance-box" class="balance-collapsed">
+            <div class="balance-header" tabindex="0">
+                <span>Balance Sheet YoY Comparison</span>
+                <span id="balance-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="balance-content" id="balance-content" style="display:none;">
+                <div id="balance-results"></div>
+            </div>
+        </div>
+        
+        <!-- Cash Flow Section -->
+        <div id="cashflow-box" class="cashflow-collapsed">
+            <div class="cashflow-header" tabindex="0">
+                <span>Cash Flow YoY Comparison</span>
+                <span id="cashflow-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="cashflow-content" id="cashflow-content" style="display:none;">
+                <div id="cashflow-results"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_KEY = '###-YOUR-API-KEY-HERE-###';
+        const API_URL = 'https://financialmodelingprep.com/stable/income-statement';
+        const PROFILE_API_URL = 'https://financialmodelingprep.com/stable/profile';
+        const BALANCE_API_URL = 'https://financialmodelingprep.com/stable/balance-sheet-statement';
+        const CASHFLOW_API_URL = 'https://financialmodelingprep.com/stable/cash-flow-statement';
+
+        // Cached DOM elements
+        const elements = {
+            stock: null,
+            error: null,
+            results: null,
+            profile: null,
+            balanceResults: null,
+            cashflowResults: null
+        };
+
+        // Metric explanations
+        const metricExplanations = {
+            revenue: "Total income from sales of goods or services.",
+            costOfRevenue: "Direct costs attributable to the production of goods sold.",
+            grossProfit: "Revenue minus cost of revenue.",
+            researchAndDevelopmentExpenses: "Expenses for research and development of products/services.",
+            generalAndAdministrativeExpenses: "Overhead and administrative costs.",
+            sellingAndMarketingExpenses: "Costs related to selling and marketing activities.",
+            sellingGeneralAndAdministrativeExpenses: "Combined selling, general, and administrative expenses.",
+            operatingExpenses: "Total expenses from normal business operations.",
+            operatingIncome: "Profit from operations after operating expenses.",
+            interestIncome: "Earnings from interest-bearing assets.",
+            interestExpense: "Cost incurred from borrowed funds.",
+            otherIncomeExpense: "Miscellaneous income or expenses.",
+            incomeBeforeTax: "Earnings before taxes are deducted.",
+            incomeTaxExpense: "Taxes owed on earnings.",
+            netIncome: "Total profit after all expenses and taxes.",
+            eps: "Earnings per share.",
+            weightedAverageShsOut: "Average number of shares outstanding.",
+        };
+
+        // Initialize DOM elements cache
+        function initializeElements() {
+            elements.stock = document.getElementById('stock');
+            elements.error = document.getElementById('error');
+            elements.results = document.getElementById('results');
+            elements.profile = document.getElementById('profile');
+            elements.balanceResults = document.getElementById('balance-results');
+            elements.cashflowResults = document.getElementById('cashflow-results');
+        }
+
+        function formatCurrency(value, currency, noCents = false) {
+            const options = {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: noCents ? 0 : (value < 10 ? 2 : 0),
+                maximumFractionDigits: noCents ? 0 : (value < 10 ? 2 : 0)
+            };
+            return new Intl.NumberFormat('en-US', options).format(value);
+        }
+
+        // Convert camelCase or snake_case to Human Readable
+        function humanizeMetricName(name) {
+            return name
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/_/g, ' ')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+        }
+
+        // Get info bubble HTML for a metric
+        function getInfoBubble(metricKey) {
+            if (!metricExplanations[metricKey]) return '';
+            return `
+                <span class="info-bubble" tabindex="0" aria-label="Info">
+                    ⓘ
+                    <span class="tooltip">${metricExplanations[metricKey]}</span>
+                </span>
+            `;
+        }
+
+        // Unified YoY table rendering function
+        function renderYoYComparisonTable(data1, data2, symbol, includeInfoBubbles = false) {
+            if (!data1 || !data2) return 'Could not fetch data for one or both years.';
+            
+            const currency = data1.reportedCurrency || 'USD';
+            const year1 = data1.fiscalYear || '';
+            const year2 = data2.fiscalYear || '';
+            const filingDate1 = data1.filingDate || '';
+            const filingDate2 = data2.filingDate || '';
+
+            const keys = Object.keys(data1).filter(k =>
+                typeof data1[k] === 'number' && typeof data2[k] === 'number'
+            );
+            
+            const rows = keys.map(key => {
+                const val1 = data1[key];
+                const val2 = data2[key];
+                const absDiff = val1 - val2;
+                const pctDiff = val2 !== 0 ? ((val1 - val2) / Math.abs(val2)) * 100 : 'N/A';
+                return `
+                    <tr>
+                        <td>
+                            ${humanizeMetricName(key)}
+                            ${includeInfoBubbles ? getInfoBubble(key) : ''}
+                        </td>
+                        <td>${formatCurrency(val1, currency)}</td>
+                        <td>${formatCurrency(val2, currency)}</td>
+                        <td>${formatCurrency(absDiff, currency, true)}</td>
+                        <td>${pctDiff === 'N/A' ? 'N/A' : Math.round(pctDiff) + '%'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>${year1} (Current)</th>
+                                <th>${year2} (Prior Year)</th>
+                                <th>YoY Change</th>
+                                <th>YoY % Change</th>
+                            </tr>
+                            <tr class="fiscal-row">
+                                <th>Fiscal Year</th>
+                                <th>${year1}</th>
+                                <th>${year2}</th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                            <tr class="fiscal-row">
+                                <th>Filing Date</th>
+                                <th>${filingDate1}</th>
+                                <th>${filingDate2}</th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Unified toggle system
+        function createToggle(boxId, headerClass, contentClass, arrowId, onExpand = null) {
+            const box = document.getElementById(boxId);
+            const header = box.querySelector(headerClass);
+            const content = box.querySelector(contentClass);
+            const arrow = document.getElementById(arrowId);
+            
+            const toggle = () => {
+                // Check if currently expanded by looking at display style or class
+                const isExpanded = content.style.display === 'block' || 
+                                 (!content.style.display && !box.classList.contains(`${boxId.replace('-box', '-collapsed')}`));
+                
+                if (isExpanded) {
+                    // Collapse
+                    content.style.display = 'none';
+                    arrow.innerHTML = '&#9654;';
+                    box.classList.add(`${boxId.replace('-box', '-collapsed')}`);
+                    box.classList.remove(`${boxId.replace('-box', '-expanded')}`);
+                } else {
+                    // Expand
+                    content.style.display = 'block';
+                    arrow.innerHTML = '&#9660;';
+                    box.classList.remove(`${boxId.replace('-box', '-collapsed')}`);
+                    box.classList.add(`${boxId.replace('-box', '-expanded')}`);
+                    
+                    if (onExpand) {
+                        onExpand();
+                    }
+                }
+            };
+            
+            header.addEventListener('click', toggle);
+            header.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') toggle();
+            });
+            
+            return toggle;
+        }
+
+        function getCachedData(key) {
+            const item = localStorage.getItem(key);
+            if (!item) return null;
+            try {
+                return JSON.parse(item);
+            } catch {
+                return null;
+            }
+        }
+
+        function setCachedData(key, data) {
+            localStorage.setItem(key, JSON.stringify(data));
+        }
+
+        // Unified API fetching function for YoY data
+        async function fetchYoYFinancialData(symbol, dataType = 'income', forceRefresh = false) {
+            const apiUrls = {
+                income: API_URL,
+                balance: BALANCE_API_URL,
+                cashflow: CASHFLOW_API_URL
+            };
+            
+            const key1 = `${dataType}_${symbol}_current`;
+            const key2 = `${dataType}_${symbol}_prior`;
+            let data1 = !forceRefresh ? getCachedData(key1) : null;
+            let data2 = !forceRefresh ? getCachedData(key2) : null;
+
+            try {
+                if (!data1 || !data2) {
+                    // Fetch annual data - use period=annual for yearly data
+                    const response = await fetch(`${apiUrls[dataType]}?symbol=${symbol}&period=annual&limit=2&apikey=${API_KEY}`);
+                    const allData = await response.json();
+                    
+                    if (allData && allData.length >= 2) {
+                        data1 = allData[0]; // Most recent year
+                        data2 = allData[1]; // Prior year
+                        setCachedData(key1, data1);
+                        setCachedData(key2, data2);
+                    } else {
+                        throw new Error('Insufficient data for year-over-year comparison');
+                    }
+                }
+                return { data1, data2 };
+            } catch (error) {
+                throw new Error(`Error fetching ${dataType} data: ${error.message}`);
+            }
+        }
+
+        // Get current stock symbol
+        function getCurrentSymbol() {
+            return elements.stock.value.trim().toUpperCase();
+        }
+
+        // Main form submission handler
+        document.getElementById('compare-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            elements.error.textContent = '';
+            elements.results.innerHTML = '';
+            
+            const symbol = getCurrentSymbol();
+            if (!symbol) return;
+
+            // Check if profile box is expanded and fetch profile
+            const profileBox = document.getElementById('company-profile-box');
+            const profileContent = profileBox.querySelector('.profile-content');
+            if (profileContent.style.display === 'block') {
+                fetchAndShowProfile(symbol);
+            }
+
+            try {
+                elements.results.innerHTML = 'Loading...';
+                const { data1, data2 } = await fetchYoYFinancialData(symbol, 'income');
+                elements.results.innerHTML = renderYoYComparisonTable(data1, data2, symbol, true);
+            } catch (err) {
+                elements.error.textContent = 'Error fetching or processing data.';
+            }
+        });
+
+        // Profile fetching function
+        async function fetchAndShowProfile(symbol, forceRefresh = false) {
+            const key = `profile_${symbol}`;
+            let profile = !forceRefresh ? getCachedData(key) : null;
+
+            elements.profile.innerHTML = 'Loading...';
+
+            try {
+                if (!profile) {
+                    const resp = await fetch(`${PROFILE_API_URL}?symbol=${symbol}&apikey=${API_KEY}`);
+                    const data = await resp.json();
+                    profile = data[0];
+                    setCachedData(key, profile);
+                }
+                elements.profile.innerHTML = renderProfile(profile);
+            } catch {
+                elements.profile.innerHTML = 'Error loading profile';
+            }
+        }
+
+        function formatLocalCurrency(value, currency) {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
+        // Render company profile HTML
+        function renderProfile(profile) {
+            if (!profile) return `<div style="color:#d32d2f;">Not found</div>`;
+            const marketCap = profile.mktCap ?? profile.marketCap;
+            // Convert to number if it's a string
+            let employees = profile.fullTimeEmployees ?? profile.employees;
+            employees = employees !== undefined && employees !== null ? Number(employees) : undefined;
+            return `
+                <a href="${profile.website}" target="_blank" rel="noopener">
+                    <img src="${profile.image}" alt="${profile.companyName} logo" class="profile-logo" />
+                </a>
+                <div class="profile-label">CEO</div>
+                <div class="profile-value">${profile.ceo || 'N/A'}</div>
+                <div class="profile-label">City, State</div>
+                <div class="profile-value">${profile.city || ''}${profile.state ? ', ' + profile.state : ''}</div>
+                <div class="profile-label">Current Price</div>
+                <div class="profile-value">${formatLocalCurrency(profile.price, profile.currency)}</div>
+                <div class="profile-label">Market Cap</div>
+                <div class="profile-value">${formatMarketCap(marketCap, profile.currency)}</div>
+                <div class="profile-label">Employees</div>
+                <div class="profile-value">${formatEmployees(employees)}</div>
+            `;
+        }
+
+        // Format market cap as $3.5B, $1.2T, etc.
+        function formatMarketCap(value, currency) {
+            if (typeof value !== 'number' || isNaN(value)) return 'N/A';
+            const abs = Math.abs(value);
+            let formatted, suffix;
+            if (abs >= 1e12) {
+                formatted = (value / 1e12).toFixed(2);
+                suffix = 'T';
+            } else if (abs >= 1e9) {
+                formatted = (value / 1e9).toFixed(2);
+                suffix = 'B';
+            } else if (abs >= 1e6) {
+                formatted = (value / 1e6).toFixed(2);
+                suffix = 'M';
+            } else if (abs >= 1e3) {
+                formatted = (value / 1e3).toFixed(2);
+                suffix = 'K';
+            } else {
+                formatted = value.toString();
+                suffix = '';
+            }
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }).format(formatted) + suffix;
+        }
+
+        // Format employees with commas
+        function formatEmployees(value) {
+            if (typeof value !== 'number' || isNaN(value)) return 'N/A';
+            return value.toLocaleString();
+        }
+
+        // Optimized cashflow and balance sheet functions
+        async function fetchAndShowCashflow(symbol) {
+            elements.cashflowResults.innerHTML = 'Loading...';
+            try {
+                const { data1, data2 } = await fetchYoYFinancialData(symbol, 'cashflow');
+                elements.cashflowResults.innerHTML = renderYoYComparisonTable(data1, data2, symbol);
+            } catch (err) {
+                elements.cashflowResults.innerHTML = 'Error fetching or processing data.';
+            }
+        }
+
+        async function fetchAndShowBalanceSheet(symbol) {
+            elements.balanceResults.innerHTML = 'Loading...';
+            try {
+                const { data1, data2 } = await fetchYoYFinancialData(symbol, 'balance');
+                elements.balanceResults.innerHTML = renderYoYComparisonTable(data1, data2, symbol);
+            } catch (err) {
+                elements.balanceResults.innerHTML = 'Error fetching or processing data.';
+            }
+        }
+
+        // Initialize the application
+        function initializeApp() {
+            initializeElements();
+            
+            // Set up all toggles
+            createToggle('company-profile-box', '.profile-header', '.profile-content', 'profile-toggle-arrow', () => {
+                const symbol = getCurrentSymbol();
+                if (symbol) {
+                    fetchAndShowProfile(symbol);
+                } else {
+                    elements.profile.innerHTML = '';
+                }
+            });
+
+            createToggle('metrics-box', '.metrics-header', '.metrics-content', 'metrics-toggle-arrow');
+            
+            createToggle('balance-box', '.balance-header', '.balance-content', 'balance-toggle-arrow', () => {
+                const symbol = getCurrentSymbol();
+                if (symbol) {
+                    fetchAndShowBalanceSheet(symbol);
+                } else {
+                    elements.balanceResults.innerHTML = '';
+                }
+            });
+
+            createToggle('cashflow-box', '.cashflow-header', '.cashflow-content', 'cashflow-toggle-arrow', () => {
+                const symbol = getCurrentSymbol();
+                if (symbol) {
+                    fetchAndShowCashflow(symbol);
+                } else {
+                    elements.cashflowResults.innerHTML = '';
+                }
+            });
+
+            // Set default states - all boxes collapsed
+            document.getElementById('metrics-box').classList.add('metrics-collapsed');
+            document.getElementById('balance-box').classList.add('balance-collapsed');
+            document.getElementById('cashflow-box').classList.add('cashflow-collapsed');
+            document.getElementById('metrics-content').style.display = 'none';
+            document.getElementById('balance-content').style.display = 'none';
+            document.getElementById('cashflow-content').style.display = 'none';
+
+            // Load last symbol if available
+            const last = localStorage.getItem('last_symbol_yoy');
+            if (last) {
+                elements.stock.value = last;
+                
+                // Load cached data for all sections
+                const profileContent = document.querySelector('.profile-content');
+                if (profileContent.style.display === 'block') {
+                    fetchAndShowProfile(last);
+                }
+                
+                // Always load cached income statement data
+                const key1 = `income_${last}_current`;
+                const key2 = `income_${last}_prior`;
+                const data1 = getCachedData(key1);
+                const data2 = getCachedData(key2);
+                if (data1 && data2) {
+                    elements.results.innerHTML = renderYoYComparisonTable(data1, data2, last, true);
+                }
+            }
+        }
+
+        // Save symbol on form submit
+        document.getElementById('compare-form').addEventListener('submit', function() {
+            const symbol = getCurrentSymbol();
+            if (symbol) {
+                localStorage.setItem('last_symbol_yoy', symbol);
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', initializeApp);
+
+        document.getElementById('refresh-data').addEventListener('click', function() {
+            localStorage.clear();
+            alert('Cached data cleared! Next analysis will fetch fresh data.');
+        });
+    </script>
+</body>
+</html>

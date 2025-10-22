@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Company Comparison</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    
+</head>
+<body>
+    <div class="floating-elements">
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+    </div>
+    
+    <a href="index.html" class="back-button">← Back to Suite</a>
+    
+    <div class="container">
+        <h1>Company Financial Comparison Tool</h1>
+        <form id="compare-form">
+            <label>
+                Stock 1 Symbol
+                <input type="text" id="stock1" required placeholder="e.g. AAPL">
+            </label>
+            <label>
+                Stock 2 Symbol
+                <input type="text" id="stock2" required placeholder="e.g. MSFT">
+            </label>
+            <button type="submit">Compare</button>
+            <button type="submit">Refresh Data</button>
+            <!--<button id="refresh-data" type="button" class="refresh-btn">Refresh Data</button>-->
+        </form>
+        <div id="error" class="error"></div>
+        <!-- Move the profile box ABOVE the results -->
+        <div id="company-profile-box" class="profile-collapsed">
+            <div class="profile-header" tabindex="0">
+                <span>Company Profiles</span>
+                <span id="profile-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="profile-content" style="display:none;">
+                <div class="profile-columns">
+                    <div class="profile-col" id="profile1"></div>
+                    <div class="profile-col" id="profile2"></div>
+                </div>
+            </div>
+        </div>
+        <div id="metrics-box" class="metrics-collapsed">
+            <div class="metrics-header" tabindex="0">
+                <span>Income Statement Comparison</span>
+                <span id="metrics-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="metrics-content" id="metrics-content" style="display:none;">
+                <div id="results"></div>
+            </div>
+        </div>
+        <div id="balance-box" class="balance-collapsed">
+            <div class="balance-header" tabindex="0">
+                <span>Balance Sheet Comparison</span>
+                <span id="balance-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="balance-content" id="balance-content" style="display:none;">
+                <div id="balance-results"></div>
+            </div>
+        </div>
+        <div id="cashflow-box" class="cashflow-collapsed">
+            <div class="cashflow-header" tabindex="0">
+                <span>Cash Flow Comparison</span>
+                <span id="cashflow-toggle-arrow" style="font-size:1.2em; margin-left:8px;">&#9654;</span>
+            </div>
+            <div class="cashflow-content" id="cashflow-content" style="display:none;">
+                <div id="cashflow-results"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_KEY = '###-YOUR-API-KEY-HERE-###';
+        const API_URL = 'https://financialmodelingprep.com/stable/income-statement';
+        const PROFILE_API_URL = 'https://financialmodelingprep.com/stable/profile';
+        const BALANCE_API_URL = 'https://financialmodelingprep.com/stable/balance-sheet-statement';
+        const CASHFLOW_API_URL = 'https://financialmodelingprep.com/stable/cash-flow-statement';
+
+        // Cached DOM elements
+        const elements = {
+            stock1: null,
+            stock2: null,
+            error: null,
+            results: null,
+            profile1: null,
+            profile2: null,
+            balanceResults: null,
+            cashflowResults: null
+        };
+
+        // Metric explanations
+        const metricExplanations = {
+            revenue: "Total income from sales of goods or services.",
+            costOfRevenue: "Direct costs attributable to the production of goods sold.",
+            grossProfit: "Revenue minus cost of revenue.",
+            researchAndDevelopmentExpenses: "Expenses for research and development of products/services.",
+            generalAndAdministrativeExpenses: "Overhead and administrative costs.",
+            sellingAndMarketingExpenses: "Costs related to selling and marketing activities.",
+            sellingGeneralAndAdministrativeExpenses: "Combined selling, general, and administrative expenses.",
+            operatingExpenses: "Total expenses from normal business operations.",
+            operatingIncome: "Profit from operations after operating expenses.",
+            interestIncome: "Earnings from interest-bearing assets.",
+            interestExpense: "Cost incurred from borrowed funds.",
+            otherIncomeExpense: "Miscellaneous income or expenses.",
+            incomeBeforeTax: "Earnings before taxes are deducted.",
+            incomeTaxExpense: "Taxes owed on earnings.",
+            netIncome: "Total profit after all expenses and taxes.",
+            eps: "Earnings per share.",
+            weightedAverageShsOut: "Average number of shares outstanding.",
+        };
+
+        // Initialize DOM elements cache
+        function initializeElements() {
+            elements.stock1 = document.getElementById('stock1');
+            elements.stock2 = document.getElementById('stock2');
+            elements.error = document.getElementById('error');
+            elements.results = document.getElementById('results');
+            elements.profile1 = document.getElementById('profile1');
+            elements.profile2 = document.getElementById('profile2');
+            elements.balanceResults = document.getElementById('balance-results');
+            elements.cashflowResults = document.getElementById('cashflow-results');
+        }
+
+        function formatCurrency(value, currency, noCents = false) {
+            const options = {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: noCents ? 0 : (value < 10 ? 2 : 0),
+                maximumFractionDigits: noCents ? 0 : (value < 10 ? 2 : 0)
+            };
+            return new Intl.NumberFormat('en-US', options).format(value);
+        }
+
+        // Convert camelCase or snake_case to Human Readable
+        function humanizeMetricName(name) {
+            return name
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/_/g, ' ')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+        }
+
+        // Get info bubble HTML for a metric
+        function getInfoBubble(metricKey) {
+            if (!metricExplanations[metricKey]) return '';
+            return `
+                <span class="info-bubble" tabindex="0" aria-label="Info">
+                    ⓘ
+                    <span class="tooltip">${metricExplanations[metricKey]}</span>
+                </span>
+            `;
+        }
+
+        // Unified table rendering function
+        function renderComparisonTable(data1, data2, symbol1, symbol2, includeInfoBubbles = false) {
+            if (!data1[0] || !data2[0]) return 'Could not fetch data for one or both symbols.';
+
+                    const currency1 = data1[0].reportedCurrency || 'USD';
+                    const currency2 = data2[0].reportedCurrency || 'USD';
+                    const fiscalYear1 = data1[0].fiscalYear || '';
+                    const filingDate1 = data1[0].filingDate || '';
+                    const fiscalYear2 = data2[0].fiscalYear || '';
+                    const filingDate2 = data2[0].filingDate || '';
+
+                    const keys = Object.keys(data1[0]).filter(k =>
+                        typeof data1[0][k] === 'number' && typeof data2[0][k] === 'number'
+                    );
+            
+                    const rows = keys.map(key => {
+                        const val1 = data1[0][key];
+                        const val2 = data2[0][key];
+                        const absDiff = val1 - val2;
+                        const pctDiff = val2 !== 0 ? ((val1 - val2) / Math.abs(val2)) * 100 : 'N/A';
+                        return `
+                            <tr>
+                                <td>
+                                    ${humanizeMetricName(key)}
+                            ${includeInfoBubbles ? getInfoBubble(key) : ''}
+                                </td>
+                                <td>${formatCurrency(val1, currency1)}</td>
+                                <td>${formatCurrency(val2, currency2)}</td>
+                                <td>${formatCurrency(absDiff, currency1, true)}</td>
+                                <td>${pctDiff === 'N/A' ? 'N/A' : Math.round(pctDiff) + '%'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+
+            return `
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th>${symbol1} (${currency1})</th>
+                                        <th>${symbol2} (${currency2})</th>
+                                        <th>Absolute Diff</th>
+                                        <th>% Diff</th>
+                                    </tr>
+                                    <tr class="fiscal-row">
+                                        <th>Fiscal Year</th>
+                                        <th>${fiscalYear1}</th>
+                                        <th>${fiscalYear2}</th>
+                                        <th></th>
+                                        <th></th>
+                                    </tr>
+                                    <tr class="fiscal-row">
+                                        <th>Filing Date</th>
+                                        <th>${filingDate1}</th>
+                                        <th>${filingDate2}</th>
+                                        <th></th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+        }
+
+        // Unified toggle system
+        function createToggle(boxId, headerClass, contentClass, arrowId, onExpand = null) {
+            const box = document.getElementById(boxId);
+            const header = box.querySelector(headerClass);
+            const content = box.querySelector(contentClass);
+            const arrow = document.getElementById(arrowId);
+            
+            const toggle = () => {
+                // Check if currently expanded by looking at display style or class
+                const isExpanded = content.style.display === 'block' || 
+                                 (!content.style.display && !box.classList.contains(`${boxId.replace('-box', '-collapsed')}`));
+                
+                if (isExpanded) {
+                    // Collapse
+                    content.style.display = 'none';
+                    arrow.innerHTML = '&#9654;';
+                    box.classList.add(`${boxId.replace('-box', '-collapsed')}`);
+                    box.classList.remove(`${boxId.replace('-box', '-expanded')}`);
+                } else {
+                    // Expand
+                    content.style.display = 'block';
+                    arrow.innerHTML = '&#9660;';
+                    box.classList.remove(`${boxId.replace('-box', '-collapsed')}`);
+                    box.classList.add(`${boxId.replace('-box', '-expanded')}`);
+                    
+                    if (onExpand) {
+                        onExpand();
+                    }
+                }
+            };
+            
+            header.addEventListener('click', toggle);
+            header.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') toggle();
+            });
+            
+            return toggle;
+        }
+
+        function getCachedData(key) {
+            const item = localStorage.getItem(key);
+            if (!item) return null;
+            try {
+                return JSON.parse(item);
+            } catch {
+                return null;
+            }
+        }
+
+        function setCachedData(key, data) {
+            localStorage.setItem(key, JSON.stringify(data));
+        }
+
+        // Unified API fetching function
+        async function fetchFinancialData(symbol1, symbol2, dataType = 'income', forceRefresh = false) {
+            const apiUrls = {
+                income: API_URL,
+                balance: BALANCE_API_URL,
+                cashflow: CASHFLOW_API_URL
+            };
+            
+            const key1 = `${dataType}_${symbol1}`;
+            const key2 = `${dataType}_${symbol2}`;
+            let data1 = !forceRefresh ? getCachedData(key1) : null;
+            let data2 = !forceRefresh ? getCachedData(key2) : null;
+
+            try {
+                if (!data1) {
+                    data1 = await fetch(`${apiUrls[dataType]}?symbol=${symbol1}&period=annual&limit=1&apikey=${API_KEY}`).then(r => r.json());
+                    setCachedData(key1, data1);
+                }
+                if (!data2) {
+                    data2 = await fetch(`${apiUrls[dataType]}?symbol=${symbol2}&period=annual&limit=1&apikey=${API_KEY}`).then(r => r.json());
+                    setCachedData(key2, data2);
+                }
+                return { data1, data2 };
+            } catch (error) {
+                throw new Error(`Error fetching ${dataType} data: ${error.message}`);
+            }
+        }
+
+        // Get current stock symbols
+        function getCurrentSymbols() {
+            return {
+                symbol1: elements.stock1.value.trim().toUpperCase(),
+                symbol2: elements.stock2.value.trim().toUpperCase()
+            };
+        }
+
+        // Main form submission handler
+        document.getElementById('compare-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            elements.error.style.display = 'none';
+            elements.error.textContent = '';
+            elements.results.innerHTML = '';
+            
+            const { symbol1, symbol2 } = getCurrentSymbols();
+            if (!symbol1 || !symbol2) return;
+
+            // Check if profile box is expanded and fetch profiles
+            const profileBox = document.getElementById('company-profile-box');
+            const profileContent = profileBox.querySelector('.profile-content');
+            if (profileContent.style.display === 'block') {
+                fetchAndShowProfiles(symbol1, symbol2);
+            }
+
+            try {
+                elements.results.innerHTML = 'Loading...';
+                const { data1, data2 } = await fetchFinancialData(symbol1, symbol2, 'income');
+                elements.results.innerHTML = renderComparisonTable(data1, data2, symbol1, symbol2, true);
+            } catch (err) {
+                elements.error.style.display = 'block';
+                elements.error.textContent = 'Error fetching or processing data.';
+            }
+        });
+
+        // Profile fetching function
+        async function fetchAndShowProfiles(symbol1, symbol2, forceRefresh = false) {
+            const key1 = `profile_${symbol1}`;
+            const key2 = `profile_${symbol2}`;
+            let profile1 = !forceRefresh ? getCachedData(key1) : null;
+            let profile2 = !forceRefresh ? getCachedData(key2) : null;
+
+            elements.profile1.innerHTML = 'Loading...';
+            elements.profile2.innerHTML = 'Loading...';
+
+            try {
+                if (!profile1) {
+                    const resp = await fetch(`${PROFILE_API_URL}?symbol=${symbol1}&apikey=${API_KEY}`);
+                    const data = await resp.json();
+                    profile1 = data[0];
+                    setCachedData(key1, profile1);
+                }
+                if (!profile2) {
+                    const resp = await fetch(`${PROFILE_API_URL}?symbol=${symbol2}&apikey=${API_KEY}`);
+                    const data = await resp.json();
+                    profile2 = data[0];
+                    setCachedData(key2, profile2);
+                }
+                elements.profile1.innerHTML = renderProfile(profile1);
+                elements.profile2.innerHTML = renderProfile(profile2);
+            } catch {
+                elements.profile1.innerHTML = 'Error loading profile';
+                elements.profile2.innerHTML = 'Error loading profile';
+            }
+        }
+
+        function formatLocalCurrency(value, currency) {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
+        // Render company profile HTML
+        function renderProfile(profile) {
+            if (!profile) return `<div style="color:#d32d2f;">Not found</div>`;
+            const marketCap = profile.mktCap ?? profile.marketCap;
+            // Convert to number if it's a string
+            let employees = profile.fullTimeEmployees ?? profile.employees;
+            employees = employees !== undefined && employees !== null ? Number(employees) : undefined;
+            return `
+                <a href="${profile.website}" target="_blank" rel="noopener">
+                    <img src="${profile.image}" alt="${profile.companyName} logo" class="profile-logo" />
+                </a>
+                <div class="profile-label">CEO</div>
+                <div class="profile-value">${profile.ceo || 'N/A'}</div>
+                <div class="profile-label">City, State</div>
+                <div class="profile-value">${profile.city || ''}${profile.state ? ', ' + profile.state : ''}</div>
+                <div class="profile-label">Current Price</div>
+                <div class="profile-value">${formatLocalCurrency(profile.price, profile.currency)}</div>
+                <div class="profile-label">Market Cap</div>
+                <div class="profile-value">${formatMarketCap(marketCap, profile.currency)}</div>
+                <div class="profile-label">Employees</div>
+                <div class="profile-value">${formatEmployees(employees)}</div>
+            `;
+        }
+
+
+
+        // Format market cap as $3.5B, $1.2T, etc.
+        function formatMarketCap(value, currency) {
+            if (typeof value !== 'number' || isNaN(value)) return 'N/A';
+            const abs = Math.abs(value);
+            let formatted, suffix;
+            if (abs >= 1e12) {
+                formatted = (value / 1e12).toFixed(2);
+                suffix = 'T';
+            } else if (abs >= 1e9) {
+                formatted = (value / 1e9).toFixed(2);
+                suffix = 'B';
+            } else if (abs >= 1e6) {
+                formatted = (value / 1e6).toFixed(2);
+                suffix = 'M';
+            } else if (abs >= 1e3) {
+                formatted = (value / 1e3).toFixed(2);
+                suffix = 'K';
+            } else {
+                formatted = value.toString();
+                suffix = '';
+            }
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: currency || 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            }).format(formatted) + suffix;
+        }
+
+        // Format employees with commas
+        function formatEmployees(value) {
+            if (typeof value !== 'number' || isNaN(value)) return 'N/A';
+            return value.toLocaleString();
+        }
+
+
+
+
+        // Optimized cashflow and balance sheet functions
+        async function fetchAndShowCashflow(symbol1, symbol2) {
+            elements.cashflowResults.innerHTML = 'Loading...';
+            try {
+                const { data1, data2 } = await fetchFinancialData(symbol1, symbol2, 'cashflow');
+                elements.cashflowResults.innerHTML = renderComparisonTable(data1, data2, symbol1, symbol2);
+            } catch (err) {
+                elements.cashflowResults.innerHTML = 'Error fetching or processing data.';
+            }
+        }
+
+        async function fetchAndShowBalanceSheet(symbol1, symbol2) {
+            elements.balanceResults.innerHTML = 'Loading...';
+            try {
+                const { data1, data2 } = await fetchFinancialData(symbol1, symbol2, 'balance');
+                elements.balanceResults.innerHTML = renderComparisonTable(data1, data2, symbol1, symbol2);
+            } catch (err) {
+                elements.balanceResults.innerHTML = 'Error fetching or processing data.';
+            }
+        }
+
+
+        // Initialize the application
+        function initializeApp() {
+            initializeElements();
+            
+            // Set up all toggles
+            createToggle('company-profile-box', '.profile-header', '.profile-content', 'profile-toggle-arrow', () => {
+                const { symbol1, symbol2 } = getCurrentSymbols();
+                if (symbol1 && symbol2) {
+                    fetchAndShowProfiles(symbol1, symbol2);
+                } else {
+                    elements.profile1.innerHTML = '';
+                    elements.profile2.innerHTML = '';
+                }
+            });
+
+            createToggle('metrics-box', '.metrics-header', '.metrics-content', 'metrics-toggle-arrow');
+            
+            createToggle('balance-box', '.balance-header', '.balance-content', 'balance-toggle-arrow', () => {
+                const { symbol1, symbol2 } = getCurrentSymbols();
+                if (symbol1 && symbol2) {
+                    fetchAndShowBalanceSheet(symbol1, symbol2);
+                } else {
+                    elements.balanceResults.innerHTML = '';
+                }
+            });
+
+            createToggle('cashflow-box', '.cashflow-header', '.cashflow-content', 'cashflow-toggle-arrow', () => {
+                const { symbol1, symbol2 } = getCurrentSymbols();
+                if (symbol1 && symbol2) {
+                    fetchAndShowCashflow(symbol1, symbol2);
+                } else {
+                    elements.cashflowResults.innerHTML = '';
+                }
+            });
+
+            // Ensure metrics box is properly collapsed on load
+            const metricsBox = document.getElementById('metrics-box');
+            const metricsContent = document.getElementById('metrics-content');
+            const metricsArrow = document.getElementById('metrics-toggle-arrow');
+            
+            metricsBox.classList.add('metrics-collapsed');
+            metricsBox.classList.remove('metrics-expanded');
+            metricsContent.style.display = 'none';
+            metricsArrow.innerHTML = '&#9654;';
+
+            // Load last symbols if available
+            const last = localStorage.getItem('last_symbols');
+            if (last) {
+                const [symbol1, symbol2] = JSON.parse(last);
+                if (symbol1 && symbol2) {
+                    elements.stock1.value = symbol1;
+                    elements.stock2.value = symbol2;
+
+                    // Load cached data for all sections (regardless of visibility)
+                    const profileContent = document.querySelector('.profile-content');
+                    if (profileContent.style.display === 'block') {
+                        fetchAndShowProfiles(symbol1, symbol2);
+                    }
+
+                    // Always load cached income statement data
+                        const key1 = `income_${symbol1}`;
+                        const key2 = `income_${symbol2}`;
+                    const data1 = getCachedData(key1);
+                    const data2 = getCachedData(key2);
+                        if (data1 && data2) {
+                        elements.results.innerHTML = renderComparisonTable(data1, data2, symbol1, symbol2, true);
+                    }
+                }
+            }
+        }
+
+        // Save symbols on form submit
+        document.getElementById('compare-form').addEventListener('submit', function() {
+            const { symbol1, symbol2 } = getCurrentSymbols();
+            if (symbol1 && symbol2) {
+                localStorage.setItem('last_symbols', JSON.stringify([symbol1, symbol2]));
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', initializeApp);
+
+        document.getElementById('refresh-data').addEventListener('click', function() {
+            localStorage.clear();
+            alert('Cached data cleared! Next comparison will fetch fresh data.');
+        });
+    </script>
+</body>
+</html>

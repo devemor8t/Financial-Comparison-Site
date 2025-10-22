@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Financial Analysis Suite</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    
+</head>
+<body>
+    <div class="floating-elements">
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+        <div class="floating-element"></div>
+    </div>
+
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1 class="hero-title">Financial Analysis Suite</h1>
+            <p class="hero-subtitle">Professional-grade tools for comprehensive financial analysis and comparison</p>
+        </div>
+    </div>
+
+    <div class="tools-grid">
+        <a href="comp.html" class="tool-card">
+            <div class="tool-icon">📊</div>
+            <h2 class="tool-title">Company Comparison</h2>
+            <p class="tool-description">
+                Compare two companies side-by-side across all financial statements. Perfect for investment analysis and competitive benchmarking.
+            </p>
+            <ul class="tool-features">
+                <li>Income Statement Analysis</li>
+                <li>Balance Sheet Comparison</li>
+                <li>Cash Flow Analysis</li>
+                <li>Company Profile Details</li>
+                <li>Real-time Data Fetching</li>
+            </ul>
+            <div class="tool-button">Launch Comparison Tool</div>
+        </a>
+
+        <a href="yoy.html" class="tool-card">
+            <div class="tool-icon">📈</div>
+            <h2 class="tool-title">Year-over-Year Analysis</h2>
+            <p class="tool-description">
+                Analyze a single company's performance across consecutive years. Track growth trends and identify patterns in financial performance.
+            </p>
+            <ul class="tool-features">
+                <li>Annual Financial Trends</li>
+                <li>Growth Rate Analysis</li>
+                <li>Performance Tracking</li>
+                <li>Historical Comparison</li>
+                <li>Trend Identification</li>
+            </ul>
+            <div class="tool-button">Launch YoY Analysis</div>
+        </a>
+
+        <a href="qoq.html" class="tool-card">
+            <div class="tool-icon">📅</div>
+            <h2 class="tool-title">Quarter-over-Quarter Analysis</h2>
+            <p class="tool-description">
+                Deep dive into quarterly performance with current quarter vs prior quarter vs same quarter last year analysis.
+            </p>
+            <ul class="tool-features">
+                <li>Quarterly Performance</li>
+                <li>Seasonal Pattern Analysis</li>
+                <li>QoQ & YoY Changes</li>
+                <li>Momentum Tracking</li>
+                <li>Earnings Quality Assessment</li>
+            </ul>
+            <div class="tool-button">Launch QoQ Analysis</div>
+        </a>
+    </div>
+
+    <div class="stats-section">
+        <h2 style="font-size: 2.5rem; font-weight: 700; margin-bottom: 20px; color: white;">Powerful Analytics</h2>
+        <p style="font-size: 1.2rem; opacity: 0.9; margin-bottom: 30px;">
+            Built with cutting-edge technology and real-time financial data
+        </p>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number">3</div>
+                <div class="stat-label">Analysis Tools</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">50+</div>
+                <div class="stat-label">Financial Metrics</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">Real-time</div>
+                <div class="stat-label">Data Updates</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">100%</div>
+                <div class="stat-label">Free to Use</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Built with ❤️ using Financial Modeling Prep API</p>
+        <p>© 2024 Financial Analysis Suite - Professional Financial Tools</p>
+    </div>
+
+    <script>
+        // Add some interactive effects
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add hover effects to cards
+            const cards = document.querySelectorAll('.tool-card');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-15px) scale(1.03)';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0) scale(1)';
+                });
+            });
+
+            // Add click animation
+            cards.forEach(card => {
+                card.addEventListener('click', function(e) {
+                    // Create ripple effect
+                    const ripple = document.createElement('div');
+                    const rect = this.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    const x = e.clientX - rect.left - size / 2;
+                    const y = e.clientY - rect.top - size / 2;
+                    
+                    ripple.style.width = ripple.style.height = size + 'px';
+                    ripple.style.left = x + 'px';
+                    ripple.style.top = y + 'px';
+                    ripple.style.position = 'absolute';
+                    ripple.style.borderRadius = '50%';
+                    ripple.style.background = 'rgba(255, 255, 255, 0.3)';
+                    ripple.style.transform = 'scale(0)';
+                    ripple.style.animation = 'ripple 0.6s linear';
+                    ripple.style.pointerEvents = 'none';
+                    
+                    this.appendChild(ripple);
+                    
+                    setTimeout(() => {
+                        ripple.remove();
+                    }, 600);
+                });
+            });
+
+            // Add CSS for ripple animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes ripple {
+                    to {
+                        transform: scale(4);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        });
+    </script>
+</body>
+</html>
