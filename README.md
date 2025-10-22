@@ -1,7 +1,7 @@
 # Financial-Comparison-Site
 A no-code developed website to compare various metrics from stock, balance sheets, and income statements. 
 
-I'm not a developer, but what I have is a particular set of 20 year old skills... and the patience to test out AI driven development to make something I could have spend a few more minutes googling or paid $10/month for. 
+I'm not a developer, but what I have is a particular set of 20 year old skills... and the patience to test out AI driven development to make something I could have spent a few more minutes googling or paid $10/month for. 
 
 To use this, you will need to go to https://site.financialmodelingprep.com and get your (free or paid) API key. Then you will need to go into each HTML file and replace "###-YOUR-API-KEY-HERE-###" with your own API key.
 
